@@ -95,6 +95,17 @@ class ReleaseGateTests(unittest.TestCase):
             with self.assertRaisesRegex(ValidationError, "pasta proibida g"):
                 validate_package_layout(package)
 
+    def test_nested_directory_layout_is_rejected(self):
+        # vad_deps/vad_deps (cópia recursiva sobre destino existente) infla o
+        # pacote com conteúdo duplicado e deve ser bloqueado pelo gate.
+        with tempfile.TemporaryDirectory() as temporary:
+            package = Path(temporary)
+            self._make_minimal_package(package)
+            nested = package / "vad_deps" / "vad_deps"
+            nested.mkdir(parents=True)
+            with self.assertRaisesRegex(ValidationError, "diretório aninhado vad_deps/vad_deps"):
+                validate_package_layout(package)
+
     def test_missing_portaudio_is_rejected_from_frozen_package(self):
         with tempfile.TemporaryDirectory() as temporary:
             package = Path(temporary)

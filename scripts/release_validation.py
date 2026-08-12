@@ -284,6 +284,16 @@ def _assert_no_bad_layout(names: Iterable[str]) -> None:
             raise ValidationError("pacote contém a pasta proibida g")
         if any(part.startswith("_MEI") for part in parts):
             raise ValidationError("pacote contém artefato de execução one-file _MEI")
+        # Aninhamento acidental de um componente da raiz dentro dele mesmo
+        # (ex.: vad_deps/vad_deps criado por uma cópia recursiva sobre um
+        # destino já existente) infla o pacote com conteúdo duplicado.
+        # Só os dois primeiros componentes são checados: aninhamentos em
+        # profundidade podem ser legítimos (ex.: licenças do torch em
+        # .../third_party/mslk/mslk).
+        if len(parts) >= 2 and parts[0] == parts[1]:
+            raise ValidationError(
+                f"pacote contém diretório aninhado {parts[0]}/{parts[1]}"
+            )
 
 
 def validate_package_layout(package_root: Path, full: bool = True) -> None:

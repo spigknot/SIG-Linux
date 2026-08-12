@@ -141,6 +141,26 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_replace(args: argparse.Namespace) -> int:
+    """Substitui o conteúdo de um arquivo já publicado (mesmo ID)."""
+    from googleapiclient.http import MediaFileUpload
+
+    file_path = Path(args.file).resolve()
+    if not file_path.is_file():
+        raise SystemExit(f"arquivo não encontrado: {file_path}")
+    service = _get_service()
+    media = MediaFileUpload(str(file_path), mimetype=args.mime, resumable=True)
+    updated = service.files().update(
+        fileId=args.file_id, media_body=media, fields="id,name,size"
+    ).execute()
+    local_size = file_path.stat().st_size
+    if int(updated["size"]) != local_size:
+        raise SystemExit(f"tamanho divergente após substituição: API={updated['size']} local={local_size}")
+    print(f"REPLACE OK: id={updated['id']} name={updated['name']} size={updated['size']}")
+    print(updated["id"])
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Publicação do SIG Linux no Google Drive")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -153,6 +173,10 @@ def main() -> int:
     verify.add_argument("file_id", help="ID do arquivo no Drive")
     verify.add_argument("sha256", help="sha256 esperado")
     verify.add_argument("--name", help="nome esperado do arquivo")
+    replace = sub.add_parser("replace", help="substituir o conteúdo de um arquivo publicado (mesmo ID)")
+    replace.add_argument("file_id", help="ID do arquivo no Drive")
+    replace.add_argument("file", help="caminho do arquivo novo")
+    replace.add_argument("--mime", default="application/octet-stream", help="mimetype (default application/octet-stream)")
     args = parser.parse_args()
     try:
         if args.command == "auth":
@@ -163,6 +187,8 @@ def main() -> int:
             return cmd_publish(args)
         if args.command == "verify":
             return cmd_verify(args)
+        if args.command == "replace":
+            return cmd_replace(args)
     except Exception as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 1
