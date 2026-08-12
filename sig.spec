@@ -37,6 +37,7 @@ a = Analysis(
         '_cffi_backend',
         'sounddevice',
         'websocket',
+        'PIL._tkinter_finder',
     ],
     hookspath=[],
     hooksconfig={},
