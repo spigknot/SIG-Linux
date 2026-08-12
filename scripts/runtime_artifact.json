@@ -1,0 +1,15 @@
+{
+  "files": {
+    "ffmpeg": {
+      "size": 453104,
+      "sha256": "bdf6aabffdba7411edff8d36c389d695257fcdf823d196020176e117612862f6"
+    },
+    "ffplay": {
+      "size": 187096,
+      "sha256": "41fa4bdf3be052f8c7c7b1b850f16685f8875aa3db6f5ca5091d38e481b79185"
+    }
+  },
+  "directories": {
+    "vad_deps": "5f2543d4770fcc90a201e4b57fce2d458734880a3aaf672cc7c19df69d61594d"
+  }
+}

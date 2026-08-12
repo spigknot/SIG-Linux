@@ -332,7 +332,9 @@ def validate_frozen_dependencies(package_root: Path) -> None:
     missing = sorted(CRITICAL_MODULES - modules)
     if missing:
         raise ValidationError(f"módulos ausentes no PYZ do executável: {', '.join(missing)}")
-    for module in ("_sounddevice", "_sounddevice_data", "sounddevice"):
+    # No Linux o _sounddevice_data (diretório de DLLs PortAudio do Windows)
+    # não existe; o PortAudio vem do sistema e é verificado abaixo.
+    for module in ("_sounddevice", "sounddevice"):
         if module not in modules:
             raise ValidationError(f"módulo ausente no PYZ do executável: {module}")
     # No Linux o PortAudio vem do sistema (libportaudio.so.2); a checagem de
