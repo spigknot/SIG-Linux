@@ -1,0 +1,80 @@
+========================================
+ SIG — Instalação e Atualização (Linux)
+========================================
+
+O SIG é o aplicativo de transcrição/processamento de áudio.
+Este guia ensina, em passos simples, como INSTALAR e como ATUALIZAR.
+
+
+----------------------------------------
+ 1) INSTALAR PELO CONSOLE (terminal)
+----------------------------------------
+
+Abra o terminal (Ctrl+Alt+T) e cole este comando:
+
+    curl -fsSL https://raw.githubusercontent.com/spigknot/SIG-Linux/main/install.sh | bash
+
+O que acontece:
+  - Baixa o instalador oficial
+  - Baixa a versão mais recente do SIG (~350 MB)
+  - Confere a integridade do arquivo (sha256)
+  - Instala o aplicativo em  ~/.local/share/sig
+  - Cria o comando "sig" e um atalho no menu e na Área de Trabalho
+
+Depois de instalado, abra com:
+
+    sig
+
+(Se o comando "sig" não for encontrado, rode uma vez:
+  echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+  source ~/.bashrc )
+
+Requisitos do sistema (se faltar, o instalador avisa):
+  - curl, unzip e python3 (presentes na maioria dos Linux)
+  - ffmpeg (sudo apt install ffmpeg)
+  - libportaudio2 — só para o microfone/transcrição ao vivo
+    (sudo apt install libportaudio2)
+
+
+----------------------------------------
+ 2) ATUALIZAR PELO CONSOLE
+----------------------------------------
+
+A mesma instalação serve de atualização. Quando sair versão nova, rode:
+
+    curl -fsSL https://raw.githubusercontent.com/spigknot/SIG-Linux/main/install.sh | bash
+
+O instalador verifica a versão instalada:
+  - Se já estiver na versão mais recente, avisa e não baixa nada.
+  - Se houver versão nova, baixa e atualiza sozinho.
+
+Para reinstalar/forçar mesmo estando atualizado:
+
+    SIG_FORCE=1 bash install.sh   (ou baixe o install.sh e rode com SIG_FORCE=1)
+
+
+----------------------------------------
+ 3) ATUALIZAR PELO APLICATIVO
+----------------------------------------
+
+Abra o SIG e procure o botão "Verificar Atualizações" (na tela principal,
+junto do botão "Atualização disponível").
+
+  - O app consulta o servidor (Google Drive), baixa a versão nova,
+    instala e reinicia sozinho.
+  - A atualização é segura: o app antigo fica de backup e, se algo der
+    errado, ele volta sozinho à versão anterior.
+
+Dica: os dois caminhos usam o mesmo pacote oficial. Pode atualizar por
+qualquer um deles.
+
+
+----------------------------------------
+ Dúvidas comuns
+----------------------------------------
+
+"Onde o app foi instalado?"      -> ~/.local/share/sig
+"Qual versão está instalada?"    -> Abra o SIG e veja em "Sobre"
+"Posso apagar o instalador?"     -> Sim; ele não deixa nada para trás
+"Perco meus arquivos ao atualizar?" -> Não; a pasta de trabalho e as
+   configurações ficam em ~/.config/sig e não são tocadas na atualização.
