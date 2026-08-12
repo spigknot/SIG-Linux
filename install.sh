@@ -37,6 +37,21 @@ ZIP_NAME="$(python3 -c "import json;print(json.load(open('$TMP_MAN'))['zip_name'
 SHA256_EXPECTED="$(python3 -c "import json;print(json.load(open('$TMP_MAN'))['sha256'])")"
 SIZE_EXPECTED="$(python3 -c "import json;print(json.load(open('$TMP_MAN'))['size'])")"
 
+INSTALLED_VERSION=""
+if [ -f "$INSTALL_DIR/build-info.json" ]; then
+    INSTALLED_VERSION="$(python3 -c "import json;print(json.load(open('$INSTALL_DIR/build-info.json'))['version'])" 2>/dev/null || true)"
+fi
+if [ -n "$INSTALLED_VERSION" ] && [ "$INSTALLED_VERSION" = "$VERSION" ] && [ "${SIG_FORCE:-0}" != "1" ]; then
+    echo "SIG já está na versão $VERSION ($INSTALL_DIR). Nada a fazer."
+    echo "Para reinstalar/forçar: SIG_FORCE=1 bash install.sh"
+    exit 0
+fi
+if [ -n "$INSTALLED_VERSION" ]; then
+    echo "==> Atualizando SIG $INSTALLED_VERSION -> $VERSION ..."
+else
+    echo "==> Instalando SIG $VERSION ..."
+fi
+
 echo "==> Baixando SIG $VERSION ($((SIZE_EXPECTED / 1024 / 1024)) MB) do Drive..."
 curl -fsSL "$DL_URL?id=$ZIP_ID&export=download&confirm=t" -o "$TMP_ZIP"
 
