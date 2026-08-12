@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Build e artefatos
+build/
+dist/
+release/generated/
+*.zip
+*.tar.gz
+
+# Chaves e segredos
+*.pem
+settings.json
+token.json
+credentials*.json
+
+# VAD e binários grandes (entram só no pacote da release)
+vad_deps/
+
+# Ferramentas
+.idea/
+.vscode/
+*.swp
+.DS_Store
