@@ -78,6 +78,24 @@ Categories=Utility;AudioVideo;
 EOF
 chmod +x "$APP_DIR/sig.desktop" 2>/dev/null || true
 
+echo "==> Criando atalho na Área de Trabalho ..."
+DESKTOP_DIR="${SIG_DESKTOP_DIR:-}"
+if [ -z "$DESKTOP_DIR" ]; then
+    DESKTOP_DIR="$(xdg-user-dir DESKTOP 2>/dev/null || true)"
+    [ -n "$DESKTOP_DIR" ] || DESKTOP_DIR="$HOME/Desktop"
+    [ -d "$DESKTOP_DIR" ] || DESKTOP_DIR="$HOME/Área de Trabalho"
+fi
+mkdir -p "$DESKTOP_DIR" 2>/dev/null || true
+if [ -d "$DESKTOP_DIR" ]; then
+    cp "$APP_DIR/sig.desktop" "$DESKTOP_DIR/SIG.desktop"
+    chmod +x "$DESKTOP_DIR/SIG.desktop" 2>/dev/null || true
+    # Marca como confiável para o XFCE/GNOME abrir sem pedir confirmação.
+    command -v gio >/dev/null 2>&1 && gio set "$DESKTOP_DIR/SIG.desktop" metadata::trusted true 2>/dev/null || true
+    echo "   Atalho: $DESKTOP_DIR/SIG.desktop"
+else
+    echo "   AVISO: pasta de Área de Trabalho não encontrada; atalho não criado."
+fi
+
 echo ""
 echo "✅ SIG $VERSION instalado!"
 echo "   App:    $INSTALL_DIR"
