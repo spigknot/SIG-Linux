@@ -34,6 +34,7 @@ Não colocar esses binários grandes no histórico normal do Git. Publicar o pac
 ## Atualização incremental pelo Drive
 
 - Publicar exclusivamente pela API do Google Drive. Não copiar nem sincronizar o pacote pela unidade montada do SMB.
+- **Fallback autorizado** (quando a API falhar): copiar para a pasta montada `smb://taguai/meu drive/Updater/Sig/Linux` — ela espelha a pasta de updates do Drive (sync no servidor) e propaga os arquivos para o Drive. Sempre tentar a API primeiro.
 - Pasta Drive: `14NX28WcCAcRuCT7TM8HmSD2IF6yYUOc0`
 - Manifesto: `latest.json` (mesmo arquivo, atualizado pela API; nunca criar duplicado)
 - O ZIP incremental deve usar a próxima versão `YYYYMMDD_NNN.zip`.
