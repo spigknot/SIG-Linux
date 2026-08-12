@@ -400,6 +400,7 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = parser().parse_args()
+    sys.path.insert(0, str(repo_root()))
     try:
         if args.command == "validate":
             return validate_command(args)
