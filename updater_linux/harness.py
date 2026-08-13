@@ -210,7 +210,10 @@ def run(updater: Path, package_zip: Path, timeout: int = 180) -> list[str]:
         # ---------- processo ativo bloqueia a transação ----------
         active_target = workspace / "active-target"
         shutil.copytree(_build_base(workspace, workspace / "active.pid"), active_target)
-        active_holder = _start_holder(10)
+        # O holder precisa sobreviver à validação do ZIP (que com o pacote
+        # full de ~350 MB leva segundos) para o updater ainda encontrá-lo vivo
+        # quando chegar ao _wait_for_processes. O finally encerra o holder.
+        active_holder = _start_holder(300)
         holders.append(active_holder)
         active_log = workspace / "active.log"
         before_sig = _hash(active_target / "sig")
