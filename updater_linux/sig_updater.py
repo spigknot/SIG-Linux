@@ -255,6 +255,11 @@ def _extract_zip(zip_path: Path, destination: Path) -> None:
             target.parent.mkdir(parents=True, exist_ok=True)
             with archive.open(member, "r") as source, target.open("xb") as output:
                 shutil.copyfileobj(source, output, length=1024 * 256)
+            # No Linux o bit de execução vem do ZIP (external_attr); sem ele o
+            # sig/sig_updater.sh extraídos não executam (Permission denied).
+            mode = (member.external_attr >> 16) & 0o777
+            if mode:
+                os.chmod(target, mode)
 
 
 def _write_journal(path: Path, data: dict) -> None:
@@ -627,6 +632,7 @@ def _resolve_install_dir(target: Path, log_path: Path) -> Path:
             or (current / "vad_deps").is_dir()
             or (current / "ffmpeg.exe").is_file()
         ):
+            _log(log_path, f"Destino resolvido: recebido={original}; usando={current}")
             return current
         parent = current.parent
         if parent == current:
