@@ -48,7 +48,7 @@ from assistant_prompts import (
 
 
 APP_NAME = "sig"
-APP_VERSION = "20260813_001"
+APP_VERSION = "20260813_002"
 UPDATE_MANIFEST_FILE_ID = "14qU9b4wbyu7_6hAOvip6qhSG91E45BJ3"
 UPDATE_DOWNLOAD_URL = "https://drive.usercontent.google.com/download"
 UPDATE_PUBLIC_KEY_E = 65537
@@ -6397,8 +6397,14 @@ class SigApp:
         self.root = root
         self.root.title("sig")
         self._apply_window_icon()
-        self.root.geometry("1260x960")
-        self.root.minsize(1220, 820)
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        # Janela inicial limitada à tela para o maximize funcionar também em
+        # monitores menores (ex.: 1366x768) — janela maior que a área útil
+        # deixa o botão de maximizar inerte no WM.
+        self.root.geometry(f"{min(1260, max(900, screen_w - 24))}x{min(960, max(640, screen_h - 80))}")
+        # minsize menor que a área útil pelo mesmo motivo.
+        self.root.minsize(min(1000, max(800, screen_w - 24)), min(640, max(560, screen_h - 80)))
         if os.name == "nt":
             self.root.state("zoomed")
         self.settings = load_settings()
