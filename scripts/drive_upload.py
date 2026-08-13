@@ -161,6 +161,16 @@ def cmd_replace(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_rename(args: argparse.Namespace) -> int:
+    """Renomeia um arquivo já publicado (mesmo ID, mesmo conteúdo)."""
+    service = _get_service()
+    updated = service.files().update(
+        fileId=args.file_id, body={"name": args.name}, fields="id,name,size"
+    ).execute()
+    print(f"RENAME OK: id={updated['id']} name={updated['name']} size={updated['size']}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Publicação do SIG Linux no Google Drive")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -177,6 +187,9 @@ def main() -> int:
     replace.add_argument("file_id", help="ID do arquivo no Drive")
     replace.add_argument("file", help="caminho do arquivo novo")
     replace.add_argument("--mime", default="application/octet-stream", help="mimetype (default application/octet-stream)")
+    rename = sub.add_parser("rename", help="renomear um arquivo publicado (mesmo ID)")
+    rename.add_argument("file_id", help="ID do arquivo no Drive")
+    rename.add_argument("name", help="novo nome do arquivo")
     args = parser.parse_args()
     try:
         if args.command == "auth":
@@ -189,6 +202,8 @@ def main() -> int:
             return cmd_verify(args)
         if args.command == "replace":
             return cmd_replace(args)
+        if args.command == "rename":
+            return cmd_rename(args)
     except Exception as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 1

@@ -6886,7 +6886,7 @@ class SigApp:
             size = int(manifest.get("size") or 0)
             if not re.fullmatch(r"\d{8}_\d{3}", version):
                 return
-            if not zip_file_id or zip_name != f"{version}.zip":
+            if not zip_file_id or zip_name not in (f"{version}.zip", f"{version}-incremental.zip"):
                 raise RuntimeError("manifesto de atualização inconsistente")
             if not re.fullmatch(r"[0-9a-f]{64}", digest) or size <= 0:
                 raise RuntimeError("hash ou tamanho inválido no manifesto")

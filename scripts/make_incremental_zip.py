@@ -86,7 +86,11 @@ def main() -> int:
         "schema": 1,
         "version": version,
         "zip_file_id": zip_file_id,
-        "zip_name": zip_name,
+        # zip_name é o nome do arquivo NO DRIVE: por compatibilidade com apps
+        # já publicados (que exigem zip_name == f"{version}.zip"), o nome
+        # canônico é <version>.zip — o arquivo local pode ter outro nome e é
+        # renomeado no Drive via `drive_upload.py rename`.
+        "zip_name": f"{version}.zip",
         "sha256": sha256_file(zip_path),
         "size": zip_path.stat().st_size,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
