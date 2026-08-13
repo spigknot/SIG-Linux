@@ -230,9 +230,12 @@ def validate_version_consistency(
             "versão inconsistente: "
             f"APP_VERSION={app_version}, manifesto={manifest_version}"
         )
-    if zip_name != f"{manifest_version}.zip":
+    # Política de publicação: o Drive recebe a incremental
+    # (<version>-incremental.zip); o full (<version>.zip) vai para o GitHub.
+    allowed_zip_names = {f"{manifest_version}.zip", f"{manifest_version}-incremental.zip"}
+    if zip_name not in allowed_zip_names:
         raise ValidationError(
-            f"nome do ZIP inconsistente: {zip_name!r} != {manifest_version}.zip"
+            f"nome do ZIP inconsistente: {zip_name!r} não é {manifest_version}.zip nem {manifest_version}-incremental.zip"
         )
     if frozen_version is not None and frozen_version != app_version:
         raise ValidationError(

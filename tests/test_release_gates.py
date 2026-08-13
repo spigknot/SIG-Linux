@@ -93,6 +93,16 @@ class ReleaseGateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, "nome do ZIP inconsistente"):
             validate_version_consistency("20260806_004", manifest)
 
+    def test_incremental_zip_name_is_accepted(self):
+        # Política atual: o manifesto do Drive referencia a incremental.
+        manifest = {"version": "20260813_001", "zip_name": "20260813_001-incremental.zip"}
+        validate_version_consistency("20260813_001", manifest, frozen_version="20260813_001")
+
+    def test_unrelated_zip_name_is_rejected(self):
+        manifest = {"version": "20260813_001", "zip_name": "20260813_001-beta.zip"}
+        with self.assertRaisesRegex(ValidationError, "nome do ZIP inconsistente"):
+            validate_version_consistency("20260813_001", manifest)
+
     def _make_minimal_package(self, root: Path, missing: set[str] = set()) -> None:
         for relative in REQUIRED_FULL_FILES:
             if not any(relative == item or relative.startswith(item + "/") for item in missing):
