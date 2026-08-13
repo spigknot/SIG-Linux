@@ -1,22 +1,25 @@
 #!/usr/bin/env bash
 # Instalador do SIG Linux.
 # Uso: curl -fsSL https://raw.githubusercontent.com/spigknot/SIG-Linux/main/install.sh | bash
-# Baixa o pacote oficial do Google Drive (canal de publicação), confere o
-# sha256 contra o manifesto assinado e instala em ~/.local/share/sig.
+# Baixa o pacote FULL do GitHub Releases (canal oficial de instalação) e
+# confere o sha256 contra o digest do asset publicado pelo GitHub. As
+# atualizações incrementais do app continuam vindo do Google Drive.
 set -euo pipefail
 
 MANIFEST_ID="14qU9b4wbyu7_6hAOvip6qhSG91E45BJ3"
 DL_URL="https://drive.usercontent.google.com/download"
 # confirm=t pula a página de confirmação do Drive para arquivos > 100 MB
 # (mesmo mecanismo usado pelo app em src/sig_app.py: google_drive_download_url).
+GITHUB_REPO="spigknot/SIG-Linux"
 
 INSTALL_DIR="${SIG_INSTALL_DIR:-$HOME/.local/share/sig}"
 BIN_DIR="${SIG_BIN_DIR:-$HOME/.local/bin}"
 APP_DIR="$HOME/.local/share/applications"
 TMP_ZIP="$(mktemp /tmp/sig_install_XXXXXX.zip)"
 TMP_MAN="$(mktemp /tmp/sig_manifest_XXXXXX.json)"
+TMP_RELEASE="$(mktemp /tmp/sig_release_XXXXXX.json)"
 
-cleanup() { rm -f "$TMP_ZIP" "$TMP_MAN"; }
+cleanup() { rm -f "$TMP_ZIP" "$TMP_MAN" "$TMP_RELEASE"; }
 trap cleanup EXIT
 
 echo "==> Verificando requisitos..."
@@ -32,10 +35,27 @@ fi
 echo "==> Baixando manifesto ($MANIFEST_ID)..."
 curl -fsSL "$DL_URL?id=$MANIFEST_ID&export=download&confirm=t" -o "$TMP_MAN"
 VERSION="$(python3 -c "import json;print(json.load(open('$TMP_MAN'))['version'])")"
-ZIP_ID="$(python3 -c "import json;print(json.load(open('$TMP_MAN'))['zip_file_id'])")"
-ZIP_NAME="$(python3 -c "import json;print(json.load(open('$TMP_MAN'))['zip_name'])")"
-SHA256_EXPECTED="$(python3 -c "import json;print(json.load(open('$TMP_MAN'))['sha256'])")"
-SIZE_EXPECTED="$(python3 -c "import json;print(json.load(open('$TMP_MAN'))['size'])")"
+
+echo "==> Consultando a release $VERSION no GitHub..."
+FULL_ZIP_NAME="${VERSION}.zip"
+curl -fsSL "https://api.github.com/repos/$GITHUB_REPO/releases/tags/v$VERSION" -o "$TMP_RELEASE"
+{ read -r FULL_URL; read -r SHA256_EXPECTED; read -r SIZE_EXPECTED; } < <(python3 - "$TMP_RELEASE" "$FULL_ZIP_NAME" <<'PYEOF'
+import json, sys
+release = json.load(open(sys.argv[1], encoding="utf-8"))
+name = sys.argv[2]
+asset = next((a for a in release.get("assets", []) if a["name"] == name), None)
+if asset is None:
+    print("ERRO: asset %s não encontrado na release" % name)
+    sys.exit(1)
+digest = asset.get("digest", "")
+if not digest.startswith("sha256:"):
+    print("ERRO: release sem digest sha256")
+    sys.exit(1)
+print(asset["browser_download_url"])
+print(digest.split(":", 1)[1])
+print(asset["size"])
+PYEOF
+)
 
 INSTALLED_VERSION=""
 if [ -f "$INSTALL_DIR/build-info.json" ]; then
@@ -52,8 +72,8 @@ else
     echo "==> Instalando SIG $VERSION ..."
 fi
 
-echo "==> Baixando SIG $VERSION ($((SIZE_EXPECTED / 1024 / 1024)) MB) do Drive..."
-curl -fsSL "$DL_URL?id=$ZIP_ID&export=download&confirm=t" -o "$TMP_ZIP"
+echo "==> Baixando SIG $VERSION ($((SIZE_EXPECTED / 1024 / 1024)) MB) do GitHub..."
+curl -fsSL -L "$FULL_URL" -o "$TMP_ZIP"
 
 echo "==> Conferindo integridade..."
 ACTUAL_SIZE="$(stat -c%s "$TMP_ZIP")"
