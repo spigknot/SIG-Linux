@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +28,7 @@ sys.path.insert(0, str(ROOT))
 
 from release import (  # noqa: E402
     read_manifest,
+    sha256_file,
     sign_manifest,
     validate_manifest_shape,
     validate_manifest_signature,
@@ -54,7 +56,14 @@ def main() -> int:
     if not zip_path.is_file():
         print(f"FAIL: ZIP da release não encontrado: {zip_path}")
         return 1
+    if draft.get("sha256") != sha256_file(zip_path) or int(draft.get("size") or 0) != zip_path.stat().st_size:
+        print("FAIL: o rascunho não corresponde ao ZIP no disco (draft desatualizado).")
+        print("  Regere o rascunho com: python scripts/release.py release --version", version)
+        return 1
 
+    # O rascunho (sem --zip-file-id) não tem created_at, obrigatório no shape.
+    if not draft.get("created_at"):
+        draft["created_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     draft["zip_file_id"] = zip_file_id
     manifest_path = generated / "latest.json"
     sign_manifest(draft, ROOT / "release" / "update_private_key.pem", manifest_path)
