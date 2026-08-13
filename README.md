@@ -23,7 +23,10 @@ Usuário → sig (executável PyInstaller one-dir, Tkinter GUI)
 | `ffmpeg` / `ffplay` | Binários Linux (sem extensão) |
 | `vad_deps/` | numpy, onnxruntime, torch, silero-vad, webrtcvad (externos ao exe) |
 | `vad_worker.py` | Processador de VAD rodado como subprocesso |
-| `sig_updater.sh` | Atualizador transacional (equivalente ao SigUpdater.exe do Windows) |
+| `sig_updater.sh` | Launcher do atualizador transacional |
+| `sig_updater.py` | Lógica do atualizador (validação de ZIP, lock, journal, rollback) |
+| `prompts/` | Prompts editáveis (histórico, oitiva, partes, qualificação) |
+| `modelos/` | Modelos Word editáveis (declarações e depoimento) |
 
 ## Requisitos
 

@@ -27,12 +27,22 @@ CRITICAL_MODULES = {"sounddevice", "websocket"}
 REQUIRED_FULL_FILES = (
     "sig",
     "_internal/base_library.zip",
+    "_internal/libpython3.11.so.1.0",
     "sig_updater.sh",
+    "sig_updater.py",
     "ffmpeg",
     "ffplay",
     "vad_worker.py",
+    "prompts/historico.txt",
+    "prompts/oitiva_system.txt",
+    "prompts/oitiva_user.txt",
+    "prompts/partes_system.txt",
+    "prompts/quaficacao_system.txt",
+    "prompts/qualificacao_user.txt",
+    "modelos/modelo_declaracoes.docx",
+    "modelos/modelo_depoimento.docx",
 )
-REQUIRED_FULL_DIRECTORIES = ("_internal", "vad_deps")
+REQUIRED_FULL_DIRECTORIES = ("_internal", "vad_deps", "prompts", "modelos")
 RUNTIME_ASSET_FILES = ("ffmpeg", "ffplay")
 RUNTIME_ASSET_DIRECTORIES = ("vad_deps",)
 
@@ -59,7 +69,10 @@ def sha256_tree(path: Path) -> str:
     digest = hashlib.sha256()
     for child in sorted(path.rglob("*")):
         if child.is_file():
-            relative = child.relative_to(path).as_posix()
+            relative_path = child.relative_to(path)
+            if "__pycache__" in relative_path.parts or child.suffix.casefold() in {".pyc", ".pyo"}:
+                continue
+            relative = relative_path.as_posix()
             digest.update(relative.encode("utf-8"))
             digest.update(b"\0")
             digest.update(child.read_bytes())
@@ -109,8 +122,17 @@ def source_fingerprint(repo_root: Path) -> str:
         "src/vad_worker.py",
         "src/assistant_prompts.py",
         "updater_linux/sig_updater.sh",
+        "updater_linux/sig_updater.py",
         "sig.spec",
         "requirements.txt",
+        "prompts/historico.txt",
+        "prompts/oitiva_system.txt",
+        "prompts/oitiva_user.txt",
+        "prompts/partes_system.txt",
+        "prompts/quaficacao_system.txt",
+        "prompts/qualificacao_user.txt",
+        "modelos/modelo_declaracoes.docx",
+        "modelos/modelo_depoimento.docx",
     ):
         path = repo_root / relative
         if not path.is_file():
@@ -429,14 +451,24 @@ def validate_build_info(
 
 def validate_updater_artifact(package_root: Path, metadata_path: Path) -> None:
     updater = package_root / "sig_updater.sh"
+    updater_logic = package_root / "sig_updater.py"
     if not updater.is_file():
         raise ValidationError("sig_updater.sh ausente")
+    if not updater_logic.is_file():
+        raise ValidationError("sig_updater.py ausente")
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     expected_size = int(metadata.get("size") or 0)
     expected_hash = str(metadata.get("sha256") or "").lower()
     if updater.stat().st_size != expected_size or sha256_file(updater) != expected_hash:
         raise ValidationError(
             "sig_updater.sh não corresponde ao artefato conhecido como bom; "
+            "o código-fonte do updater não está versionado neste projeto"
+        )
+    expected_logic_size = int(metadata.get("logic_size") or 0)
+    expected_logic_hash = str(metadata.get("logic_sha256") or "").lower()
+    if updater_logic.stat().st_size != expected_logic_size or sha256_file(updater_logic) != expected_logic_hash:
+        raise ValidationError(
+            "sig_updater.py não corresponde ao artefato conhecido como bom; "
             "o código-fonte do updater não está versionado neste projeto"
         )
 

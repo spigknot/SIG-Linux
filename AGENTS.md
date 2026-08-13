@@ -2,6 +2,26 @@
 
 Estas regras são obrigatórias para futuras alterações, compilações e publicações.
 
+## Código-fonte e prompts
+
+- Todos os prompts editáveis ficam em `prompts/`, um arquivo `.txt` por prompt:
+  `historico.txt`, `oitiva_system.txt`, `oitiva_user.txt`, `partes_system.txt`,
+  `quaficacao_system.txt` e `qualificacao_user.txt`.
+- `src/assistant_prompts.py` deve permanecer apenas como carregador e montador das
+  partes variáveis. Não voltar a colocar os textos completos dos prompts nesse módulo.
+- O build empacota uma cópia em `_internal/prompts` e o pacote full também leva
+  `prompts/` ao lado do `sig`; a pasta externa tem prioridade para permitir edição
+  sem recompilação.
+- Os modelos Word editáveis ficam em `modelos/`, no mesmo nível de `prompts/`:
+  `modelo_declaracoes.docx` e `modelo_depoimento.docx`. O build deve sempre
+  empacotar ambos em `_internal/modelos`; em execução, a cópia externa ao lado
+  do SIG tem prioridade e nunca deve ser sobrescrita se já existir.
+- Geração de documentos: no Windows a cópia rica (RTF/HTML) e o PDF usam o
+  Microsoft Word; no Linux o PDF usa o LibreOffice headless (`soffice
+  --headless --convert-to pdf`) e a cópia leva o texto puro do DOCX para o
+  clipboard via `xclip`/`wl-copy`. Detectar as ferramentas em runtime e dar
+  erro amigável quando ausentes (nunca falhar em silêncio).
+
 ## Build do aplicativo
 
 - O SIG Linux deve ser compilado em modo **onedir** (COLLECT).
@@ -23,11 +43,14 @@ Uma instalação nova precisa conter, na mesma pasta:
 
 - `sig`
 - `_internal/`
-- `sig_updater.sh`
+- `sig_updater.sh` (launcher fino)
+- `sig_updater.py` (lógica transacional do updater)
 - `ffmpeg`
 - `ffplay`
 - `vad_deps/`
 - `vad_worker.py`
+- `prompts/`
+- `modelos/`
 
 Não colocar esses binários grandes no histórico normal do Git. Publicar o pacote completo como ZIP da release.
 
@@ -63,19 +86,26 @@ Não colocar esses binários grandes no histórico normal do Git. Publicar o pac
 5. Conferir a estrutura interna do ZIP.
 6. Atualizar o manifesto e validar a assinatura.
 7. Verificar no Drive a versão, o tamanho e o SHA-256 publicados.
-8. Conferir no log do updater a linha `Atualizacao aplicada e validada`; não considerar concluído apenas porque apareceu `Atualizador iniciado`.
+8. Conferir no log do updater a linha `Atualização aplicada e validada.`; não considerar concluído apenas porque apareceu `SigUpdaterV2 iniciado.`.
 9. Abrir o SIG atualizado e conferir em Sobre que a versão exibida é a mesma do manifesto. Se a versão antiga continuar aparecendo, o `APP_VERSION` não foi atualizado.
 10. Confirmar que o SIG atualizado não volta a oferecer a mesma versão imediatamente.
 
 ## Diagnóstico do updater
 
-- O `sig_updater.sh` deve permanecer ao lado do SIG numa instalação completa.
+- O `sig_updater.sh` (launcher) e o `sig_updater.py` (lógica) devem permanecer ao lado do SIG numa instalação completa.
 - Erro `Failed to load Python DLL ... _MEI...` indica distribuição one-file ou falha na extração temporária; reconstruir em onedir e incluir `_internal` no pacote.
 - Se o log disser que `_internal` e `sig` foram instalados, mas a versão não mudou, verificar primeiro `APP_VERSION` antes de culpar a cópia.
 - Se o log parar em `aguardando validação`, aguardar a linha final de validação e conferir o processo; não publicar outra tentativa sem diagnosticar.
 - Testar o executável instalado com o diretório de trabalho apontando para a pasta que contém `ffmpeg`, `ffplay`, `vad_deps` e `_internal`.
-- O `sig_updater.sh` é gerado por `_update_script_text()` em `src/sig_app.py` (fonte oficial) e materializado em `updater_linux/sig_updater.sh` por `scripts/materialize_updater.py`. Toda alteração no updater DEVE ser feita no `_update_script_text()`, com regeneração do script e atualização de `scripts/updater_artifact.json`.
-- O updater é transacional: valida o ZIP (testzip + membros obrigatórios), usa backup em `/tmp/sig_backup_XXXXXX`, troca `_internal/` inteiro, copia arquivos individuais com backup e rollback, e valida a inicialização do SIG novo por 5s antes de confirmar.
+- `updater_linux/sig_updater.py` é o port direto do `updater_v2/updater.py` do Windows. Toda melhoria de segurança feita lá DEVE ser replicada aqui (e vice-versa).
+- O updater é transacional e valida antes de tocar a instalação:
+  - ZIP: CRC de cada membro (`testzip`), sem criptografia, sem symlinks, sem caminhos absolutos/`..`/`.`/`\x00`/`:`, sem nomes duplicados, sem `g`/`dist`/`_MEI`, topologia consistente (arquivo usado como diretório), top-level restrito a uma allowlist, limites de entradas (10k), de membro (1 GiB) e total (4 GiB), membros obrigatórios e `build-info.json` com versão válida.
+  - Instalação alvo: componentes obrigatórios e árvore sem symlinks/`g`/`_MEI`.
+  - Lock exclusivo por instalação (`.sig.sig-update.lock`, `fcntl` no Linux).
+  - Espera o PID do SIG e TODOS os processos com o mesmo executável (via `/proc/*/exe`) encerrarem.
+  - Journal transacional com fases (`prepared → old-moved → new-moved → validated`) e backup; transações interrompidas são recuperadas ou revertidas na próxima execução.
+  - Troca atômica por componente (rename), validação da árvore instalada, inicialização do SIG novo confirmada e rollback automático com relançamento da versão anterior em falha.
+- O `sig_updater.sh` é o launcher fino gerado por `_update_script_text()` em `src/sig_app.py` (fonte oficial) e materializado em `updater_linux/sig_updater.sh` por `scripts/materialize_updater.py`. O `updater_linux/sig_updater.py` é a fonte oficial da lógica. Toda alteração DEVE atualizar `scripts/updater_artifact.json` (hash do `.sh` e do `.py`).
 
 ## Gate oficial de build e release
 

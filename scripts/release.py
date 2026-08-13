@@ -15,6 +15,7 @@ bundle for static assets whose source is currently outside Git.
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import shutil
@@ -52,6 +53,27 @@ from release_validation import (
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
+
+
+def load_updater_harness(root: Path):
+    root_text = str(root.resolve())
+    if root_text not in sys.path:
+        sys.path.insert(0, root_text)
+    return importlib.import_module("updater_linux.harness").run
+
+
+def latest_generated_full_package(root: Path) -> Path:
+    candidates = [
+        path
+        for path in (root / "release" / "generated").glob("*/*.zip")
+        if path.is_file() and (path.parent / "package" / "vad_deps").is_dir()
+    ]
+    if not candidates:
+        raise ValidationError(
+            "nenhum pacote full validado foi encontrado em release/generated; "
+            "informe --package-zip ou gere uma release primeiro"
+        )
+    return max(candidates, key=lambda path: path.stat().st_mtime)
 
 
 def check_build_environment() -> None:
@@ -114,6 +136,10 @@ def copy_runtime_assets(runtime_root: Path, package_root: Path, updater_path: Pa
         raise ValidationError(f"sig_updater.sh ausente: {updater_source}")
     shutil.copy2(updater_source, package_root / "sig_updater.sh")
     (package_root / "sig_updater.sh").chmod(0o755)
+    updater_logic_source = updater_source.parent / "sig_updater.py"
+    if not updater_logic_source.is_file():
+        raise ValidationError(f"sig_updater.py ausente ao lado de: {updater_source}")
+    shutil.copy2(updater_logic_source, package_root / "sig_updater.py")
 
 
 def zip_directory(source_root: Path, zip_path: Path) -> None:
@@ -168,14 +194,18 @@ def build_release(args: argparse.Namespace) -> int:
     build_id = uuid.uuid4().hex
     work_root = Path(tempfile.mkdtemp(prefix=f"sig-clean-build-{version}-"))
     try:
-        # O updater do Linux é um script bash versionado (updater_linux/sig_updater.sh),
-        # não um executável compilado; validamos seu hash contra o artefato conhecido.
+        # O updater do Linux é versionado (updater_linux/sig_updater.sh, launcher
+        # fino, + sig_updater.py, lógica transacional); validamos os hashes
+        # contra o artefato conhecido.
         fresh_updater = root / "updater_linux" / "sig_updater.sh"
-        if not fresh_updater.is_file():
-            raise ValidationError("updater_linux/sig_updater.sh ausente")
+        fresh_updater_logic = root / "updater_linux" / "sig_updater.py"
+        if not fresh_updater.is_file() or not fresh_updater_logic.is_file():
+            raise ValidationError("updater_linux/sig_updater.sh ou sig_updater.py ausente")
         updater_metadata = json.loads((root / "scripts/updater_artifact.json").read_text(encoding="utf-8"))
         if sha256_file(fresh_updater) != str(updater_metadata.get("sha256") or "").lower():
             raise ValidationError("sig_updater.sh não corresponde ao artifact.json")
+        if sha256_file(fresh_updater_logic) != str(updater_metadata.get("logic_sha256") or "").lower():
+            raise ValidationError("sig_updater.py não corresponde ao artifact.json")
         pyinstaller_dist = work_root / "pyinstaller-dist"
         pyinstaller_work = work_root / "pyinstaller-work"
         run_command(
@@ -200,6 +230,8 @@ def build_release(args: argparse.Namespace) -> int:
 
         package_root = output_root / "package"
         shutil.copytree(fresh_pyinstaller_root, package_root)
+        shutil.copytree(root / "prompts", package_root / "prompts")
+        shutil.copytree(root / "modelos", package_root / "modelos")
         copy_runtime_assets(runtime_root, package_root, fresh_updater)
         shutil.copy2(root / "src/vad_worker.py", package_root / "vad_worker.py")
         validate_runtime_assets(package_root, runtime_manifest)
@@ -227,7 +259,7 @@ def build_release(args: argparse.Namespace) -> int:
         # Exercise the exact ZIP and helper that are about to be published.
         # This runs only in the disposable harness and never touches the
         # user's installation.
-        from updater_linux.harness import run as run_updater_test
+        run_updater_test = load_updater_harness(root)
 
         for message in run_updater_test(
             package_root / "sig_updater.sh",
@@ -313,22 +345,30 @@ def tests_command() -> int:
     return 0 if result.wasSuccessful() else 1
 
 
+def _ensure_test_package(root: Path, package_zip: Path) -> None:
+    """Gera um pacote mínimo (sig fake, _internal dummy, updater) para exercitar o updater."""
+    package_zip.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(package_zip, "w") as archive:
+        archive.writestr("sig", "#!/usr/bin/env bash\nexit 0\n")
+        archive.writestr("_internal/base_library.zip", b"dummy")
+        archive.writestr("_internal/libpython3.11.so.1.0", b"dummy")
+        archive.writestr("sig_updater.sh", "#!/usr/bin/env bash\nexit 0\n")
+        archive.writestr("sig_updater.py", "print('fixture')\n")
+        archive.writestr("ffmpeg", b"fixture")
+        archive.writestr("ffplay", b"fixture")
+        archive.writestr("vad_worker.py", b"print('fixture')\n")
+        archive.writestr("vad_deps/fixture.txt", b"fixture")
+
+
 def updater_test_command(args: argparse.Namespace) -> int:
     root = repo_root()
-    from updater_linux.harness import run
+    run_updater_test = load_updater_harness(root)
 
     package_zip = (args.package_zip or root / "updater_linux/test-package.zip").resolve()
     if not package_zip.is_file():
-        # Sem pacote de teste fornecido, gera um pacote mínimo (sig fake,
-        # _internal dummy, sig_updater.sh) apenas para exercitar o updater.
-        package_zip.parent.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(package_zip, "w") as archive:
-            archive.writestr("sig", "#!/usr/bin/env bash\nexit 0\n")
-            archive.writestr("_internal/base_library.zip", b"dummy")
-            archive.writestr("sig_updater.sh", "#!/usr/bin/env bash\nexit 0\n")
-            archive.writestr("vad_deps/fixture.txt", b"fixture")
+        _ensure_test_package(root, package_zip)
     updater = (args.updater or root / "updater_linux/sig_updater.sh").resolve()
-    for message in run(updater, package_zip, args.timeout):
+    for message in run_updater_test(updater, package_zip, args.timeout):
         print(f"PASS: {message}")
     return 0
 
@@ -340,20 +380,14 @@ def updater_v2_test_command(args: argparse.Namespace) -> int:
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     if sha256_file(updater) != str(metadata.get("sha256") or "").lower():
         raise ValidationError("sig_updater.sh não corresponde ao artifact.json")
-    if sha256_file(root / "updater_linux/sig_updater.sh") != str(metadata.get("source_sha256") or "").lower():
-        raise ValidationError("updater_linux/sig_updater.sh não corresponde ao artifact.json")
-    sys.path.insert(0, str(root / "updater_linux"))
-    from harness import run
+    if sha256_file(root / "updater_linux/sig_updater.py") != str(metadata.get("logic_sha256") or "").lower():
+        raise ValidationError("updater_linux/sig_updater.py não corresponde ao artifact.json")
+    run_updater_test = load_updater_harness(root)
 
     package_zip = (args.package_zip or root / "updater_linux/test-package.zip").resolve()
     if not package_zip.is_file():
-        package_zip.parent.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(package_zip, "w") as archive:
-            archive.writestr("sig", "#!/usr/bin/env bash\nexit 0\n")
-            archive.writestr("_internal/base_library.zip", b"dummy")
-            archive.writestr("sig_updater.sh", "#!/usr/bin/env bash\nexit 0\n")
-            archive.writestr("vad_deps/fixture.txt", b"fixture")
-    for message in run(updater, package_zip, args.timeout):
+        _ensure_test_package(root, package_zip)
+    for message in run_updater_test(updater, package_zip, args.timeout):
         print(f"PASS: {message}")
     return 0
 

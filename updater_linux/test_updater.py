@@ -16,7 +16,12 @@ def _make_minimal_test_zip(destination: Path) -> None:
     with zipfile.ZipFile(destination, "w") as archive:
         archive.writestr("sig", "#!/usr/bin/env bash\nexit 0\n")
         archive.writestr("_internal/base_library.zip", b"dummy")
+        archive.writestr("_internal/libpython3.11.so.1.0", b"dummy")
         archive.writestr("sig_updater.sh", "#!/usr/bin/env bash\nexit 0\n")
+        archive.writestr("sig_updater.py", "print('fixture')\n")
+        archive.writestr("ffmpeg", b"fixture")
+        archive.writestr("ffplay", b"fixture")
+        archive.writestr("vad_worker.py", b"print('fixture')\n")
         archive.writestr("vad_deps/fixture.txt", b"fixture")
 
 

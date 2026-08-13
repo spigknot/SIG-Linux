@@ -32,6 +32,8 @@ a = Analysis(
         ('assets/appwin.png', 'assets'),
         ('assets/icon.png', 'assets'),
         ('assets/default_nomes.txt', 'assets'),
+        ('prompts/*.txt', 'prompts'),
+        ('modelos/*.docx', 'modelos'),
     ],
     hiddenimports=[
         '_cffi_backend',

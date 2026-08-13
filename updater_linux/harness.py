@@ -1,8 +1,8 @@
-"""Harness de integração do sig_updater.sh (SIG Linux).
+"""Harness de integração do updater do SIG Linux (sig_updater.sh + sig_updater.py).
 
 Equivalente ao updater_v2/harness.py do Windows. Monta uma instalação
 temporária simulada (sig de mentira, ffmpeg fake, vad_deps fake), executa o
-updater bash real apontando para ela e verifica:
+updater real apontando para ela e verifica:
 
 - zips inválidos/incompletos são rejeitados sem tocar a instalação;
 - processo ativo bloqueia a transação;
@@ -23,10 +23,17 @@ import zipfile
 from pathlib import Path
 
 
-REQUIRED_ZIP_MEMBERS = ("sig", "_internal/base_library.zip", "sig_updater.sh")
-# Marcadores de log exatamente como o _update_script_text() de src/sig_app.py gera.
-SUCCESS_LOG_MARKER = "Atualizacao aplicada e validada."
-ROLLBACK_LOG_MARKER = "Aplicando rollback."
+REQUIRED_ZIP_MEMBERS = (
+    "sig",
+    "_internal/base_library.zip",
+    "_internal/libpython3.11.so.1.0",
+    "sig_updater.py",
+    "sig_updater.sh",
+)
+# Marcadores de log exatamente como sig_updater.py gera.
+SUCCESS_LOG_MARKER = "Atualização aplicada e validada."
+ROLLBACK_LOG_MARKER = "Rollback concluído; a versão anterior foi restaurada."
+RESOLVE_LOG_MARKER = "Destino resolvido"
 
 
 def _hash(path: Path) -> str:
@@ -50,11 +57,14 @@ def _build_base(workspace: Path, pidfile: Path) -> Path:
     base = workspace / f"base-{uuid.uuid4().hex[:8]}"
     (base / "_internal").mkdir(parents=True)
     (base / "_internal" / "base_library.zip").write_bytes(b"dummy-internal")
+    (base / "_internal" / "libpython3.11.so.1.0").write_bytes(b"dummy-libpython")
     (base / "sig").write_text(_fake_sig_text(pidfile), encoding="utf-8")
     (base / "sig").chmod(0o755)
     (base / "sig_updater.sh").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    (base / "sig_updater.py").write_text("print('fixture')\n", encoding="utf-8")
     (base / "ffmpeg").write_bytes(b"fake-ffmpeg")
     (base / "ffplay").write_bytes(b"fake-ffplay")
+    (base / "vad_worker.py").write_text("print('fixture')\n", encoding="utf-8")
     (base / "vad_deps").mkdir()
     (base / "vad_deps" / "fixture.txt").write_text("fixture", encoding="utf-8")
     return base
@@ -70,7 +80,7 @@ def _zip_directory(source: Path, destination: Path, extras: dict[str, bytes] | N
 
 
 def _minimal_zip(destination: Path, missing: set[str] | None = None, extras: dict[str, bytes] | None = None) -> None:
-    """Zip mínimo válido para os cenários de rejeição do updater bash."""
+    """Zip mínimo válido para os cenários de rejeição do updater."""
     missing = missing or set()
     with zipfile.ZipFile(destination, "w") as archive:
         for relative in REQUIRED_ZIP_MEMBERS:
@@ -96,7 +106,12 @@ def _start_holder(seconds: int):
     return holder
 
 
-def _run_updater(updater: Path, package: Path, target: Path, log: Path, pid: int, timeout: int) -> int:
+def _run_updater(updater: Path, updater_logic: Path, package: Path, target: Path, log: Path, pid: int, timeout: int) -> int:
+    # O launcher (sig_updater.sh) executa python3 "$DIR/sig_updater.py".
+    # Garantimos o par .sh/.py na mesma pasta para o teste exercitar o fluxo real.
+    test_dir = updater.parent
+    if updater_logic.resolve() != (test_dir / "sig_updater.py").resolve():
+        shutil.copy2(updater_logic, test_dir / "sig_updater.py")
     result = subprocess.run(
         [
             "/bin/bash",
@@ -109,6 +124,10 @@ def _run_updater(updater: Path, package: Path, target: Path, log: Path, pid: int
             str(pid),
             "--log",
             str(log),
+            "--wait-timeout",
+            "20",
+            "--startup-timeout",
+            "3",
         ],
         check=False,
         timeout=timeout,
@@ -132,12 +151,12 @@ def _stop_sig(pidfile: Path) -> None:
         pass
 
 
-def _assert_rejected(updater: Path, package: Path, target: Path, workspace: Path, label: str) -> None:
+def _assert_rejected(updater: Path, updater_logic: Path, package: Path, target: Path, workspace: Path, label: str) -> None:
     before = _hash(target / "sig") if (target / "sig").is_file() else None
     log = workspace / f"{label}.log"
     holder = _start_holder(1)
     try:
-        code = _run_updater(updater, package, target, log, holder.pid, timeout=30)
+        code = _run_updater(updater, updater_logic, package, target, log, holder.pid, timeout=30)
     finally:
         if holder.poll() is None:
             holder.terminate()
@@ -153,6 +172,9 @@ def run(updater: Path, package_zip: Path, timeout: int = 180) -> list[str]:
         raise AssertionError(f"updater não encontrado: {updater}")
     if not package_zip.is_file():
         raise AssertionError(f"pacote base não encontrado: {package_zip}")
+    updater_logic = updater.parent / "sig_updater.py"
+    if not updater_logic.is_file():
+        raise AssertionError(f"lógica do updater não encontrada ao lado do launcher: {updater_logic}")
 
     # Preflight: o pacote que será publicado precisa ter os membros que o
     # próprio updater valida.
@@ -171,19 +193,19 @@ def run(updater: Path, package_zip: Path, timeout: int = 180) -> list[str]:
 
         bad_sig = workspace / "missing-sig.zip"
         _minimal_zip(bad_sig, {"sig"})
-        _assert_rejected(updater, bad_sig, preflight_target, workspace, "missing-sig")
+        _assert_rejected(updater, updater_logic, bad_sig, preflight_target, workspace, "missing-sig")
 
         bad_internal = workspace / "missing-internal.zip"
         _minimal_zip(bad_internal, {"_internal"})
-        _assert_rejected(updater, bad_internal, preflight_target, workspace, "missing-internal")
+        _assert_rejected(updater, updater_logic, bad_internal, preflight_target, workspace, "missing-internal")
 
         bad_updater = workspace / "missing-updater.zip"
         _minimal_zip(bad_updater, {"sig_updater.sh"})
-        _assert_rejected(updater, bad_updater, preflight_target, workspace, "missing-updater")
+        _assert_rejected(updater, updater_logic, bad_updater, preflight_target, workspace, "missing-updater")
 
         corrupt = workspace / "corrupt.zip"
         corrupt.write_bytes(b"not a zip")
-        _assert_rejected(updater, corrupt, preflight_target, workspace, "corrupt-zip")
+        _assert_rejected(updater, updater_logic, corrupt, preflight_target, workspace, "corrupt-zip")
 
         # ---------- processo ativo bloqueia a transação ----------
         active_target = workspace / "active-target"
@@ -194,7 +216,7 @@ def run(updater: Path, package_zip: Path, timeout: int = 180) -> list[str]:
         before_sig = _hash(active_target / "sig")
         active_start = time.time()
         try:
-            _run_updater(updater, package_zip, active_target, active_log, active_holder.pid, timeout=8)
+            _run_updater(updater, updater_logic, package_zip, active_target, active_log, active_holder.pid, timeout=8)
             raise AssertionError("updater retornou com processo ativo; deveria estar bloqueado")
         except subprocess.TimeoutExpired:
             pass  # esperado: o updater aguarda o PID encerrar
@@ -223,7 +245,7 @@ def run(updater: Path, package_zip: Path, timeout: int = 180) -> list[str]:
         success_log = workspace / "success.log"
         success_holder = _start_holder(2)
         holders.append(success_holder)
-        code = _run_updater(updater, success_zip, nested_target, success_log, success_holder.pid, timeout=timeout)
+        code = _run_updater(updater, updater_logic, success_zip, nested_target, success_log, success_holder.pid, timeout=timeout)
         if code != 0:
             raise AssertionError(f"sucesso retornou {code}: {success_log.read_text(errors='replace')}")
         if (success_target / "_internal/release-test-marker.txt").read_text().strip() != marker:
@@ -231,7 +253,7 @@ def run(updater: Path, package_zip: Path, timeout: int = 180) -> list[str]:
         log_text = success_log.read_text(encoding="utf-8", errors="replace")
         if SUCCESS_LOG_MARKER not in log_text:
             raise AssertionError(f"o log de sucesso não contém a validação final:\n{log_text}")
-        if "destino resolvido=" not in log_text:
+        if RESOLVE_LOG_MARKER not in log_text:
             raise AssertionError("o log de sucesso não registra a resolução do destino")
         _stop_sig(success_pidfile)
         holders.remove(success_holder)
@@ -254,7 +276,7 @@ def run(updater: Path, package_zip: Path, timeout: int = 180) -> list[str]:
         rollback_log = workspace / "rollback.log"
         rollback_holder = _start_holder(2)
         holders.append(rollback_holder)
-        rollback_code = _run_updater(updater, bad_zip, rollback_target, rollback_log, rollback_holder.pid, timeout=timeout)
+        rollback_code = _run_updater(updater, updater_logic, bad_zip, rollback_target, rollback_log, rollback_holder.pid, timeout=timeout)
         rollback_text = rollback_log.read_text(encoding="utf-8", errors="replace")
         _stop_sig(rollback_pidfile)
         holders.remove(rollback_holder)
