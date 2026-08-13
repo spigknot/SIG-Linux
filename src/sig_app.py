@@ -48,7 +48,7 @@ from assistant_prompts import (
 
 
 APP_NAME = "sig"
-APP_VERSION = "20260812_002"
+APP_VERSION = "20260813_001"
 UPDATE_MANIFEST_FILE_ID = "14qU9b4wbyu7_6hAOvip6qhSG91E45BJ3"
 UPDATE_DOWNLOAD_URL = "https://drive.usercontent.google.com/download"
 UPDATE_PUBLIC_KEY_E = 65537
